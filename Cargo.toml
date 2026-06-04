@@ -1,0 +1,6 @@
+[package]
+name = "ternary-transform"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Transform theory for ternary data on {-1, 0, +1}"
