@@ -1,109 +1,81 @@
 # ternary-transform
 
-Transform theory for ternary data — Haar-like wavelet transforms, ternary Fourier features, random Fourier features for kernel approximation, and ternary kernel functions with RBF-like similarity.
+**Signal transformations that reshape ternary data. Shift, scale, invert, permute, convolve.**
 
-## Why This Exists
+Every processing chain is a sequence of transforms. Take a signal, shift it in time, scale its amplitude, invert its polarity, convolve it with a kernel, threshold the result. Each transform is simple. The magic is in the composition — chaining transforms into pipelines that sculpt raw data into meaningful structure.
 
-Signal processing and kernel methods assume continuous, real-valued inputs. When your data is inherently ternary {-1, 0, +1} — multi-level signals, ternary logic outputs, tri-state encodings — standard transforms can waste capacity on values that never appear. This crate provides transforms adapted for ternary structure: wavelets that respect the sign pattern, Fourier features computed on ternary sequences, and kernel functions (RBF, matching, agreement, polynomial) designed for ternary vectors. Also includes k-nearest-neighbor search via RBF similarity. `forbid(unsafe_code)` throughout.
+This crate provides the fundamental signal transforms for ternary data: time-domain operations (delay, reverse, rotate), amplitude operations (invert, threshold, compress), spatial operations (convolve, correlate), and structural operations (interleave, decimate, permute). Each is a pure function — no state, no side effects, just input → output.
 
-## Core Concepts
+## What's Inside
 
-- **TernaryWavelet**: Haar-like wavelet transform with forward/inverse, energy-per-level analysis, and threshold-based denoising. Levels are capped at `log₂(n)`.
-- **TernaryFourier**: Discrete Fourier-style feature extraction for ternary sequences. Computes cosine and sine sums at integer frequencies, power spectrum, and approximate reconstruction.
-- **RandomFeatures**: Random Fourier features for scalable kernel approximation. Uses deterministic pseudo-random weights and biases seeded from a user-supplied seed.
-- **TernaryKernel**: Kernel functions for ternary vectors — RBF, matching (fraction of identical positions), agreement (dot product / length), and polynomial. Computes full kernel matrices.
-- **TernaryRBFSimilarity**: RBF-like similarity with Hamming and weighted distance, similarity matrices, and k-nearest-neighbor search.
+- **`delay(signal, n)`** — shift signal forward by n samples, padding with zeros
+- **`reverse(signal)`** — reverse the signal in time
+- **`rotate(signal, n)`** — circular rotation (wrap around)
+- **`invert(signal)`** — flip every value: +1↔-1, 0 stays
+- **`threshold(signal, min, max)`** — zero out values outside the range
+- **`convolve(signal, kernel)`** — convolution with a ternary kernel (edge detection, smoothing)
+- **`correlate(a, b)`** — cross-correlation between two signals
+- **`interleave(a, b)`** — alternate samples from two signals
+- **`decimate(signal, factor)`** — keep every Nth sample
+- **`permute(signal, order)`** — rearrange samples by index permutation
+- **`amplify(signal, factor)`** — scale amplitude, clamp to ternary
 
-## Quick Start
-
-```toml
-# Cargo.toml
-[dependencies]
-ternary-transform = "0.1"
-```
+## Quick Example
 
 ```rust
-use ternary_transform::{
-    Ternary, TernaryWavelet, TernaryFourier, RandomFeatures,
-    TernaryKernel, KernelType, TernaryRBFSimilarity,
-};
+use ternary_transform::*;
 
-fn main() {
-    // Wavelet transform
-    let wavelet = TernaryWavelet::new(2);
-    let signal = vec![1.0, -1.0, 1.0, -1.0];
-    let coeffs = wavelet.forward(&signal);
-    let energy = wavelet.energy_per_level(&coeffs);
-    let denoised = wavelet.denoise(&signal, 0.05);
+let a = vec![1, 0, -1, 0, 1, 0, -1, 0];
+let b = vec![0, 1, 0, -1, 0, 1, 0, -1];
 
-    // Ternary Fourier features
-    let fourier = TernaryFourier::new(4);
-    let data = vec![Ternary::Pos, Ternary::Neg, Ternary::Pos, Ternary::Neg];
-    let features = fourier.transform(&data); // 8 values: 4 freq × 2 (cos+sin)
-    let spectrum = fourier.power_spectrum(&data);
+// Invert: flip polarity
+let inv = invert(&a);
+// [-1, 0, 1, 0, -1, 0, 1, 0]
 
-    // Kernel functions
-    let kernel = TernaryKernel::new(1.0);
-    let a = vec![Ternary::Pos, Ternary::Neg];
-    let b = vec![Ternary::Pos, Ternary::Zero];
-    let rbf = kernel.rbf(&a, &b);
-    let matching = kernel.matching(&a, &b); // 0.5
+// Delay: shift forward 2 samples
+let delayed = delay(&a, 2);
+// [0, 0, 1, 0, -1, 0, 1, 0]
 
-    // K-nearest neighbors
-    let sim = TernaryRBFSimilarity::new(1.0);
-    let data = vec![
-        vec![Ternary::Pos, Ternary::Pos],
-        vec![Ternary::Neg, Ternary::Neg],
-        vec![Ternary::Zero, Ternary::Zero],
-    ];
-    let knn = sim.knn(&vec![Ternary::Pos, Ternary::Pos], &data, 2);
-    println!("Nearest: {:?}", knn);
-}
+// Convolve with edge-detection kernel
+let kernel = vec![1, 0, -1];
+let edges = convolve(&a, &kernel);
+// Detects transitions between +1 and -1
+
+// Cross-correlation: how similar are a and b at each offset?
+let corr = correlate(&a, &b);
+// Peak at the offset where they align best
+
+// Interleave: weave two signals together
+let woven = interleave(&a, &b);
+// [1, 0, 0, 1, -1, 0, 0, -1, ...]
 ```
 
-## API Overview
+## The Deeper Truth
 
-| Type | Description |
-|---|---|
-| `Ternary` | Value: `Neg`, `Zero`, `Pos` with `to_f64()` |
-| `TernaryWavelet` | `forward()`, `inverse()`, `energy_per_level()`, `denoise()` |
-| `TernaryFourier` | `transform()`, `power_spectrum()`, `reconstruct()` |
-| `RandomFeatures` | `transform()`, `kernel_approx()` — deterministic from seed |
-| `TernaryKernel` | `rbf()`, `matching()`, `agreement()`, `polynomial()`, `kernel_matrix()` |
-| `KernelType` | Enum: `Rbf`, `Matching`, `Agreement`, `Polynomial(degree, offset)` |
-| `TernaryRBFSimilarity` | `similarity()`, `hamming_distance()`, `weighted_distance()`, `knn()`, `similarity_matrix()` |
+**Every transform is a perspective shift.** Invert changes the sign of everything — what was positive becomes negative, what was negative becomes positive. It's hearing the world through a mirror. Convolution with a kernel is asking "does this shape appear here?" — it's pattern matching in the time domain. Correlation is asking "how are these two signals related?" — it's similarity measurement.
 
-## How It Works
+The power comes from composition. A pipeline like `invert → delay → convolve → threshold` transforms a raw signal into something that highlights specific features. This is how image processing works (edge detection is convolution with a specific kernel), how audio effects work (echo is delay + attenuate + add), and how neural networks work (learned convolution kernels). The ternary versions are the simplest possible implementations — the skeleton that all signal processing is built on.
 
-**TernaryWavelet** applies the standard Haar decomposition (average + difference) but operates on floating-point representations of ternary signals. Multiple levels decompose the approximation coefficients recursively. Denoising thresholds the detail coefficients at each level.
+**Use cases:**
+- **Signal processing pipelines** — compose transforms into processing chains
+- **Audio effects** — delay, invert, and convolve are the basis of every audio effect
+- **Image processing** — ternary images convolved with edge-detection kernels
+- **Data augmentation** — generate variations of ternary data for ML training
+- **Pattern matching** — cross-correlation finds where patterns appear in signals
 
-**TernaryFourier** computes discrete cosine and sine sums at integer frequencies `1..n_features`. For a ternary sequence of length `n`, the feature at frequency `k` is `Σ x[t]·cos(2πkt/n)` and `Σ x[t]·sin(2πkt/n)`. The power spectrum is `cos² + sin²` at each frequency.
+## See Also
 
-**RandomFeatures** uses the random kitchen sinks trick: generates random weight vectors and biases, then maps inputs through `cos(w·x + b)` to approximate shift-invariant kernels in a low-dimensional space.
+- **ternary-bite** — destructive transforms (crush, wavefold, saturate)
+- **ternary-warp** — simpler value transforms (clamp, quantize, fold, warp)
+- **ternary-echo** — echo is delay + attenuate + add
+- **ternary-mixer** — mixing is amplitude scaling + addition
+- **ternary-filter** — (future) frequency-domain transforms
 
-**TernaryKernel** implements four kernel functions directly on ternary vectors by projecting to `{-1.0, 0.0, 1.0}`. `TernaryRBFSimilarity` uses Hamming distance in the RBF exponent for a ternary-native similarity measure.
+## Install
 
-## Use Cases
-
-- **Ternary signal denoising**: Clean up noisy ternary sensor data using wavelet thresholding.
-- **Feature extraction for ternary ML**: Compute Fourier or random features from ternary sequences for downstream classifiers.
-- **Ternary similarity search**: Find nearest neighbors in ternary-valued datasets using RBF or matching kernels.
-- **Kernel methods on ternary data**: Build SVM-like classifiers with kernels designed for the ternary domain.
-
-## Ecosystem
-
-Part of the **SuperInstance** ternary computing suite:
-
-- `ternary-lattice` — lattice structures for ternary values
-- `ternary-codes` — error-correcting codes for ternary data
-- `ternary-gradient` — gradient-free optimization on ternary landscapes
-- `ternary-language` — ternary NLP and grammar processing
-- `ternary-trees` — ternary decision trees and forests
-- `ternary-transform` — this crate
-- `ternary-planning` — planning and scheduling with ternary priorities
-- `ternary-rl` — reinforcement learning with ternary actions
-- `ternary-som` — self-organizing maps for ternary data
-- `ternary-failure` — failure analysis with ternary classification
+```bash
+cargo add ternary-transform
+```
 
 ## License
 
